@@ -9,11 +9,12 @@ use core::dict::Felt252Dict;
 use core::dict::Felt252DictEntryTrait;
 use core::nullable::NullableTrait;
 use core::cmp::min;
-
+use core::fmt::{Debug, Formatter, Error};
 use stwo_cairo_verifier::BaseField;
 use stwo_cairo_verifier::fields::m31::m31;
 use stwo_cairo_verifier::utils::{ArrayExTrait, DictTrait, OptBoxTrait};
 use stwo_cairo_verifier::vcs::hasher::MerkleHasher;
+
 
 pub struct MerkleDecommitment<impl H: MerkleHasher> {
     /// Hash values that the verifier needs but cannot deduce from previous computations, in the
@@ -26,6 +27,23 @@ pub struct MerkleDecommitment<impl H: MerkleHasher> {
     pub column_witness: Array<BaseField>,
 }
 impl MerkleDecommitmentDrop<impl H: MerkleHasher, +Drop<H::Hash>> of Drop<MerkleDecommitment<H>>;
+impl MerkleDecommitmentDebug<
+    impl H: MerkleHasher, +Debug<H::Hash>
+> of Debug<MerkleDecommitment<H>> {
+    fn fmt(self: @MerkleDecommitment<H>, ref f: Formatter) -> Result<(), Error> {
+        Result::Ok(())
+    }
+}
+
+impl MerkleDecommitmentClone<
+    impl H: MerkleHasher, +Clone<Array<H::Hash>>, +Drop<Array<H::Hash>>
+> of Clone<MerkleDecommitment<H>> {
+    fn clone(self: @MerkleDecommitment<H>) -> MerkleDecommitment<H> {
+        MerkleDecommitment::<
+            H
+        > { hash_witness: self.hash_witness.clone(), column_witness: self.column_witness.clone() }
+    }
+}
 
 pub struct MerkleVerifier<impl H: MerkleHasher> {
     pub root: H::Hash,
@@ -33,7 +51,7 @@ pub struct MerkleVerifier<impl H: MerkleHasher> {
 }
 impl MerkleVerifierDrop<impl H: MerkleHasher, +Drop<H::Hash>> of Drop<MerkleVerifier<H>>;
 
-trait MerkleVerifierTrait<impl H: MerkleHasher> {
+pub trait MerkleVerifierTrait<impl H: MerkleHasher> {
     /// Verifies the decommitment of the columns.
     ///
     /// # Arguments
@@ -166,7 +184,6 @@ impl MerkleVerifierImpl<
                 layer_total_queries
                     .append((current_query, H::hash_node(node_hashes, column_values)));
             };
-
             if let Result::Err(err) = res {
                 break Result::Err(err);
             }

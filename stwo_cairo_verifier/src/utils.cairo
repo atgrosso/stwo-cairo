@@ -5,8 +5,9 @@ use core::box::BoxTrait;
 use core::dict::Felt252DictEntryTrait;
 use core::dict::Felt252DictTrait;
 use core::iter::Iterator;
-
+use stwo_cairo_verifier::fields::qm31::{QM31, qm31};
 use stwo_cairo_verifier::BaseField;
+
 
 #[generate_trait]
 pub impl DictImpl<T, +Felt252DictValue<T>, +PanicDestruct<T>> of DictTrait<T> {
@@ -81,6 +82,21 @@ pub fn pack4(cur: felt252, values: [BaseField; 4]) -> felt252 {
         + x3.into()
 }
 
+
+pub fn bit_reverse_index(mut index: usize, mut bits: u32) -> usize {
+    assert!(bits < 32);
+    let mut result = 0;
+    let mut pow_of_two = 1;
+    while bits > 0 {
+        result *= 2;
+        result = result | ((index / pow_of_two) & 1);
+        pow_of_two *= 2;
+        bits -= 1;
+    };
+    result
+}
+
+
 pub fn pow(base: u32, mut exponent: u32) -> u32 {
     let mut result = 1;
     let mut base_power = base;
@@ -97,9 +113,78 @@ pub fn pow(base: u32, mut exponent: u32) -> u32 {
     result
 }
 
+pub fn pow_qm31(base: QM31, mut exponent: u32) -> QM31 {
+    let mut result = qm31(1, 0, 0, 0);
+    let mut base_power = base;
+    loop {
+        if exponent & 1 == 1 {
+            result = result * base_power;
+        }
+        exponent = exponent / 2;
+        if exponent == 0 {
+            break;
+        }
+        base_power = base_power * base_power;
+    };
+    result
+}
+
+pub fn qm31_zero_array(n: u32) -> Array<QM31> {
+    let mut result = array![];
+    let mut i = 0;
+    while i < n {
+        result.append(qm31(0, 0, 0, 0));
+        i += 1;
+    };
+    result
+}
+
+pub fn find(n: u32, a: Span<u32>) -> bool {
+    let mut i = 0;
+    let mut res = false;
+    while i < a.len() {
+        if (*a[i] == n) {
+            res = true;
+            break;
+        }
+        i = i + 1;
+    };
+    res
+}
+
+pub fn get_unique_elements<T, +PartialEq<T>, +Drop<T>, +Copy<T>>(vector: @Array<T>) -> Array<T> {
+    let mut uniques: Array<T> = array![];
+
+    let mut i = 0;
+    while i < vector.len() {
+        if !contains_element(@uniques, vector[i]) {
+            uniques.append(*vector[i]);
+        }
+        i = i + 1
+    };
+
+    uniques
+}
+
+
+pub fn contains_element<T, +PartialEq<T>>(vector: @Array<T>, element: @T) -> bool {
+    let mut contains = false;
+
+    let mut i = 0;
+    while i < vector.len() {
+        if vector[i] == element {
+            contains = true;
+            break;
+        }
+        i = i + 1;
+    };
+    contains
+}
+
+
 #[cfg(test)]
 mod tests {
-    use super::pow;
+    use super::{pow, bit_reverse_index, pow_qm31, qm31, get_unique_elements};
 
     #[test]
     fn test_pow() {
@@ -108,6 +193,70 @@ mod tests {
         assert_eq!(1024, pow(2, 10));
         assert_eq!(4096, pow(2, 12));
         assert_eq!(1048576, pow(2, 20));
+    }
+
+    #[test]
+    fn test_bit_reverse() {
+        // 1 bit
+        assert_eq!(0, bit_reverse_index(0, 1));
+        assert_eq!(1, bit_reverse_index(1, 1));
+
+        // 2 bits
+        assert_eq!(0, bit_reverse_index(0, 2));
+        assert_eq!(2, bit_reverse_index(1, 2));
+        assert_eq!(1, bit_reverse_index(2, 2));
+        assert_eq!(3, bit_reverse_index(3, 2));
+
+        // 3 bits
+        assert_eq!(0, bit_reverse_index(0, 3));
+        assert_eq!(4, bit_reverse_index(1, 3));
+        assert_eq!(2, bit_reverse_index(2, 3));
+        assert_eq!(6, bit_reverse_index(3, 3));
+
+        // 16 bits
+        assert_eq!(24415, bit_reverse_index(64250, 16));
+
+        // 31 bits
+        assert_eq!(16448250, bit_reverse_index(800042880, 31));
+    }
+
+    #[test]
+    fn test_pow_qm31_1() {
+        let result = pow_qm31(qm31(1, 2, 3, 4), 0);
+        let expected_result = qm31(1, 0, 0, 0);
+        assert_eq!(expected_result, result)
+    }
+
+    #[test]
+    fn test_pow_qm31_2() {
+        let result = pow_qm31(qm31(1, 2, 3, 4), 1);
+        let expected_result = qm31(1, 2, 3, 4);
+        assert_eq!(expected_result, result)
+    }
+
+    #[test]
+    fn test_pow_qm31_3() {
+        let result = pow_qm31(qm31(1, 2, 3, 4), 37);
+        let expected_result = qm31(1394542587, 260510989, 997191897, 2127074080);
+        assert_eq!(expected_result, result)
+    }
+
+    #[test]
+    fn test_can_get_unique_elements_of_array() {
+        let vector_1 = array![1, 1, 2, 2, 3, 3, 4, 4, 5, 5];
+        let expected_vector_1 = array![1, 2, 3, 4, 5];
+        let vector_2 = array![1, 1, 1, 1, 1, 1, 1, 1];
+        let expected_vector_2 = array![1];
+        let vector_3 = array![1, 2, 3, 4, 5];
+        let expected_vector_3 = array![1, 2, 3, 4, 5];
+
+        let return_vector_1 = get_unique_elements(@vector_1);
+        let return_vector_2 = get_unique_elements(@vector_2);
+        let return_vector_3 = get_unique_elements(@vector_3);
+
+        assert_eq!(expected_vector_1, return_vector_1);
+        assert_eq!(expected_vector_2, return_vector_2);
+        assert_eq!(expected_vector_3, return_vector_3);
     }
 }
 

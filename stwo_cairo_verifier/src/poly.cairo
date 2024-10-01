@@ -1,3 +1,3 @@
+pub mod line;
 pub mod circle;
-mod line;
-mod utils;
+pub mod utils;
